@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(py --version)",
+      "Bash(node index.js --count 3 --interval 2000 --settle 3500)",
+      "Bash(curl -sSL -A \"Mozilla/5.0 \\(Windows NT 10.0; Win64; x64\\)\" \"https://kkofuku.mkc1.cdn.digitaloceanspaces.com/index.html\" -D - -o page.html --max-time 30)",
+      "Bash(node index.js --count 3 --interval 2000)"
+    ]
+  }
+}

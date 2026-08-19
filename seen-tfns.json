@@ -1,0 +1,60 @@
+{
+  "numbers": [
+    {
+      "canonical": "18883031261",
+      "pretty": "+1 (888) 303-1261",
+      "tollFree": true,
+      "firstSeen": "2026-08-18T16:08:49.566Z",
+      "sourceUrl": "https://kkofuku.mkc1.cdn.digitaloceanspaces.com/index.html",
+      "foundVia": "text"
+    },
+    {
+      "canonical": "18886928041",
+      "pretty": "+1 (888) 692-8041",
+      "tollFree": true,
+      "firstSeen": "2026-08-18T16:16:15.238Z",
+      "sourceUrl": "https://kkofuku.mkc1.cdn.digitaloceanspaces.com/index.html",
+      "foundVia": "text"
+    },
+    {
+      "canonical": "18886926155",
+      "pretty": "+1 (888) 692-6155",
+      "tollFree": true,
+      "firstSeen": "2026-08-18T16:42:27.091Z",
+      "sourceUrl": "https://kkofuku.mkc1.cdn.digitaloceanspaces.com/index.html",
+      "foundVia": "text"
+    },
+    {
+      "canonical": "18887165762",
+      "pretty": "+1 (888) 716-5762",
+      "tollFree": true,
+      "firstSeen": "2026-08-18T16:52:49.876Z",
+      "sourceUrl": "https://kkofuku.mkc1.cdn.digitaloceanspaces.com/index.html",
+      "foundVia": "text"
+    },
+    {
+      "canonical": "18884787109",
+      "pretty": "+1 (888) 478-7109",
+      "tollFree": true,
+      "firstSeen": "2026-08-18T17:05:34.640Z",
+      "sourceUrl": "https://kkofuku.mkc1.cdn.digitaloceanspaces.com/index.html",
+      "foundVia": "decrypt:win"
+    },
+    {
+      "canonical": "18063822357",
+      "pretty": "+1 (806) 382-2357",
+      "tollFree": false,
+      "firstSeen": "2026-08-18T17:48:53.708Z",
+      "sourceUrl": "https://kkofuku.mkc1.cdn.digitaloceanspaces.com/index.html",
+      "foundVia": "decrypt:mac"
+    },
+    {
+      "canonical": "18556135813",
+      "pretty": "+1 (855) 613-5813",
+      "tollFree": true,
+      "firstSeen": "2026-08-18T18:07:44.633Z",
+      "sourceUrl": "https://kkofuku.mkc1.cdn.digitaloceanspaces.com/index.html",
+      "foundVia": "decrypt:mac"
+    }
+  ]
+}
