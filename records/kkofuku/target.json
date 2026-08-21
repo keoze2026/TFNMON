@@ -1,0 +1,20 @@
+{
+  "id": "kkofuku",
+  "label": "kkofuku",
+  "url": "https://kkofuku.mkc1.cdn.digitaloceanspaces.com/index.html?gad_source=5&gad_campaignid=24140747718",
+  "enabled": true,
+  "notes": "original default target",
+  "uniqueNumbers": 7,
+  "checks": 25,
+  "hits": 0,
+  "misses": 24,
+  "firstChecked": "2026-08-21T17:31:24.234Z",
+  "lastChecked": "2026-08-21T18:16:02.101Z",
+  "lastNew": null,
+  "errors": 13,
+  "lastError": {
+    "at": "2026-08-21T18:16:02.101Z",
+    "message": "http 404"
+  },
+  "currentNumbers": []
+}

@@ -1,0 +1,108 @@
+{
+  "updated": "2026-08-21T18:16:24.208Z",
+  "urlsFile": "C:\\Users\\LEE\\Desktop\\Dev Projects\\TFNMON\\urls.json",
+  "targets": [
+    {
+      "id": "kkofuku",
+      "label": "kkofuku",
+      "url": "https://kkofuku.mkc1.cdn.digitaloceanspaces.com/index.html?gad_source=5&gad_campaignid=24140747718",
+      "enabled": true,
+      "records": "C:\\Users\\LEE\\Desktop\\Dev Projects\\TFNMON\\records\\kkofuku",
+      "uniqueNumbers": 7,
+      "newThisRun": 0,
+      "checks": 25,
+      "hits": 0,
+      "misses": 24,
+      "firstChecked": "2026-08-21T17:31:24.234Z",
+      "lastChecked": "2026-08-21T18:16:02.101Z",
+      "lastNew": null,
+      "errors": 13,
+      "lastError": {
+        "at": "2026-08-21T18:16:02.101Z",
+        "message": "http 404"
+      },
+      "currentNumbers": [],
+      "numbers": [
+        "+1 (888) 303-1261",
+        "+1 (888) 692-8041",
+        "+1 (888) 692-6155",
+        "+1 (888) 716-5762",
+        "+1 (888) 478-7109",
+        "+1 (806) 382-2357",
+        "+1 (855) 613-5813"
+      ]
+    },
+    {
+      "id": "subroutine",
+      "label": "subroutine",
+      "url": "https://subroutine.lon1.cdn.digitaloceanspaces.com/index.html?gad_source=5&gad_campaignid=24151317280",
+      "enabled": true,
+      "records": "C:\\Users\\LEE\\Desktop\\Dev Projects\\TFNMON\\records\\subroutine",
+      "uniqueNumbers": 4,
+      "newThisRun": 0,
+      "checks": 2,
+      "hits": 0,
+      "misses": 2,
+      "firstChecked": "2026-08-21T18:15:34.842Z",
+      "lastChecked": "2026-08-21T18:16:07.360Z",
+      "lastNew": null,
+      "errors": 0,
+      "lastError": null,
+      "currentNumbers": [],
+      "numbers": [
+        "+1 (877) 297-3964",
+        "+1 (844) 785-3850",
+        "+1 (833) 371-8093",
+        "+1 (877) 891-3360"
+      ]
+    },
+    {
+      "id": "leeuwen",
+      "label": "leeuwen",
+      "url": "https://leeuwen.lon1.cdn.digitaloceanspaces.com/index.html?gad_source=5&gad_campaignid=24155547745",
+      "enabled": true,
+      "records": "C:\\Users\\LEE\\Desktop\\Dev Projects\\TFNMON\\records\\leeuwen",
+      "uniqueNumbers": 1,
+      "newThisRun": 0,
+      "checks": 1,
+      "hits": 0,
+      "misses": 1,
+      "firstChecked": "2026-08-21T18:15:50.599Z",
+      "lastChecked": "2026-08-21T18:15:50.599Z",
+      "lastNew": null,
+      "errors": 1,
+      "lastError": {
+        "at": "2026-08-21T18:15:50.599Z",
+        "message": "http 404"
+      },
+      "currentNumbers": [],
+      "numbers": [
+        "+1 (833) 371-8740"
+      ]
+    },
+    {
+      "id": "pacific-depths",
+      "label": "pacific-depths",
+      "url": "https://pacific-depths-70202-1f9b16cc0560.herokuapp.com/?gad_source=5",
+      "enabled": true,
+      "records": "C:\\Users\\LEE\\Desktop\\Dev Projects\\TFNMON\\records\\pacific-depths",
+      "uniqueNumbers": 1,
+      "newThisRun": 0,
+      "checks": 1,
+      "hits": 0,
+      "misses": 1,
+      "firstChecked": "2026-08-21T18:15:56.063Z",
+      "lastChecked": "2026-08-21T18:15:56.063Z",
+      "lastNew": null,
+      "errors": 1,
+      "lastError": {
+        "at": "2026-08-21T18:15:56.063Z",
+        "message": "http 404"
+      },
+      "currentNumbers": [],
+      "numbers": [
+        "+1 (804) 555-0115"
+      ]
+    }
+  ]
+}

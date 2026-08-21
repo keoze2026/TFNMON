@@ -1,0 +1,20 @@
+{
+  "id": "pacific-depths",
+  "label": "pacific-depths",
+  "url": "https://pacific-depths-70202-1f9b16cc0560.herokuapp.com/?gad_source=5",
+  "enabled": true,
+  "notes": "seen in the pre-urls.json log; flip enabled to true to monitor again",
+  "uniqueNumbers": 1,
+  "checks": 1,
+  "hits": 0,
+  "misses": 1,
+  "firstChecked": "2026-08-21T18:15:56.063Z",
+  "lastChecked": "2026-08-21T18:15:56.063Z",
+  "lastNew": null,
+  "errors": 1,
+  "lastError": {
+    "at": "2026-08-21T18:15:56.063Z",
+    "message": "http 404"
+  },
+  "currentNumbers": []
+}

@@ -24,16 +24,23 @@
  * Intended for defensive / threat-intelligence use.
  *
  * Usage:
- *   node index.js                                   # default target, runs until Ctrl+C
- *   node index.js https://host/index.html           # one or more URLs as positional args
+ *   node index.js                                   # every url in urls.json, in turn
+ *   node index.js https://host/index.html           # ad-hoc target(s), ignores urls.json
  *   node index.js --url https://a --url https://b
- *   node index.js --urls-file targets.txt
- *   node index.js --interval 5000 --count 20        # 20 refreshes, 5s apart
+ *   node index.js --urls-file other-targets.json
+ *   node index.js --interval 5000 --count 20        # 20 checks per url, 5s apart
  *   node index.js --headful                         # show the browser window
  *
+ * Targets (urls.json):
+ *   Every url listed there is checked one at a time, round-robin, and gets its
+ *   OWN record folder — a number found on one url is never filed under another.
+ *
  * Output / state:
- *   seen-tfns.json   persistent set of every unique number ever collected
- *   tfns.log         append-only log line for each newly discovered number
+ *   records/<id>/seen-tfns.json   numbers ever seen on THAT url
+ *   records/<id>/tfns.log         discovery log for THAT url
+ *   records/<id>/target.json      that url's status (checks, hits, last seen)
+ *   records/summary.json          every url and its numbers, at a glance
+ *   seen-tfns.json / tfns.log     merged mirror of all urls (--no-combined to skip)
  */
 
 const fs = require("fs");
@@ -61,11 +68,17 @@ function printHelp() {
 Usage:
   node index.js [urls...] [options]
 
+Targets come from urls.json (created on first run). Every URL is checked in
+turn, one at a time, and keeps its own record folder under records/<id>/ so the
+numbers for one URL are never mixed with another's.
+
 Options:
-  --url <u>         Add a target URL (repeatable)
-  --urls-file <f>   Read target URLs from a file (one per line, # = comment)
-  --interval <ms>   Delay between refreshes            (default 5000)
-  --count <n>       Refreshes per URL per cycle; 0/Infinity = forever (default forever)
+  --url <u>         Check this URL instead of urls.json (repeatable)
+  --urls-file <f>   Targets file: .json like urls.json, or .txt one URL per line
+  --records <dir>   Where the per-URL record folders live (default records/)
+  --no-combined     Don't also mirror everything into the merged store + log
+  --interval <ms>   Delay between checks                (default 5000)
+  --count <n>       Checks per URL; 0/Infinity = forever (default forever)
   --method <m>      auto | decrypt | browser           (default auto)
                     auto    = decrypt, fall back to browser if the kit isn't recognized
                     decrypt = Node-only, no browser, ~0 memory (recommended)
@@ -77,15 +90,24 @@ Options:
   --scan-html       Scan raw HTML too, not just visible text (noisier)
   --load-assets     [browser] load images/media/fonts too (default: blocked)
   --recycle <n>     [browser] relaunch every n refreshes to free memory (default 30; 0=never)
-  --store <f>       Path to the persistent seen-numbers JSON (default seen-tfns.json)
-  --log <f>         Path to the append-only discovery log   (default tfns.log)
+  --store <f>       Merged all-URL mirror of the numbers  (default seen-tfns.json)
+  --log <f>         Merged all-URL discovery log          (default tfns.log)
   -h, --help        Show this help
+
+Per-URL records (the authoritative, unmixed copy):
+  records/<id>/seen-tfns.json   every number ever seen on THAT url
+  records/<id>/tfns.log         append-only discovery log for THAT url
+  records/<id>/target.json      that url's status: checks, hits, last seen…
+  records/summary.json          one-glance table of every url and its numbers
 `);
 }
 
 function parseArgs(argv) {
   const cfg = {
-    urls: [],
+    urls: [], // set from the command line only; otherwise urls.json is used
+    urlsFile: path.join(__dirname, "urls.json"),
+    records: path.join(__dirname, "records"),
+    combined: true, // also mirror everything into the merged store/log
     interval: 5000,
     count: Infinity,
     settle: 3000,
@@ -99,20 +121,17 @@ function parseArgs(argv) {
     store: path.join(__dirname, "seen-tfns.json"),
     log: path.join(__dirname, "tfns.log"),
   };
+
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
     const next = () => argv[++i];
     switch (a) {
       case "--url": cfg.urls.push(next()); break;
-      case "--urls-file": {
-        const lines = fs
-          .readFileSync(next(), "utf8")
-          .split(/\r?\n/)
-          .map((s) => s.trim())
-          .filter((s) => s && !s.startsWith("#"));
-        cfg.urls.push(...lines);
-        break;
-      }
+      case "--urls-file":
+      case "--urls":
+      case "--targets": cfg.urlsFile = path.resolve(next()); break;
+      case "--records": cfg.records = path.resolve(next()); break;
+      case "--no-combined": cfg.combined = false; break;
       case "--interval": cfg.interval = Number(next()); break;
       case "--count": {
         const n = Number(next());
@@ -150,8 +169,7 @@ function parseArgs(argv) {
         else { console.error(`Unknown argument: ${a}`); printHelp(); process.exit(1); }
     }
   }
-  if (cfg.urls.length === 0) cfg.urls = [...DEFAULT_URLS];
-  return cfg;
+  return cfg; // targets themselves are resolved later, by loadTargets()
 }
 
 // --------------------------------------------------------------------------
@@ -231,28 +249,35 @@ function cryptoJsDecrypt(cipherB64, passphrase) {
   return Buffer.concat([dec.update(ct), dec.final()]).toString("utf8");
 }
 
-// fetch() text with a timeout.
+// fetch() with a timeout. Returns the status alongside the body, so a target
+// that is simply gone (404, DNS failure) can be reported as such instead of
+// being retried in a browser that would only fail more slowly.
 async function fetchText(url, timeoutMs) {
   const ac = new AbortController();
   const t = setTimeout(() => ac.abort(), timeoutMs);
   try {
     const res = await fetch(url, { headers: { "User-Agent": UA }, signal: ac.signal });
-    return await res.text();
+    return { ok: res.ok, status: res.status, text: await res.text() };
   } finally {
     clearTimeout(t);
   }
 }
 
-// Try to get the number(s) purely by decryption — no browser.
-// Returns an array of records, or null if this page doesn't match the known kit
-// (so the caller can fall back to the browser method).
+// Try to get the number(s) purely by decryption — no browser. Returns:
+//   Array                     the kit was recognized; its records (may be empty)
+//   { unavailable: "note" }   the page itself is gone or unreachable
+//   null                      the page loaded but isn't this kit — the caller
+//                             may fall back to the browser method
 async function scanViaDecrypt(url, cfg) {
-  let html;
+  let res;
   try {
-    html = await fetchText(url, cfg.timeout);
-  } catch {
-    return null; // network error: let the caller decide
+    res = await fetchText(url, cfg.timeout);
+  } catch (e) {
+    return { unavailable: `unreachable: ${String((e && e.message) || e).split("\n")[0]}` };
   }
+  if (!res.ok) return { unavailable: `http ${res.status}` };
+  const html = res.text;
+
   const pass = /PASSPHRASE\s*=\s*["']([^"']+)["']/.exec(html)?.[1];
   const urlKey = /URL_KEY\s*=\s*["']([^"']+)["']/.exec(html)?.[1];
   const encOrigin = /ENC_DATA_ORIGIN\s*=\s*["']([^"']+)["']/.exec(html)?.[1];
@@ -271,8 +296,9 @@ async function scanViaDecrypt(url, cfg) {
   const results = new Map();
   for (const platform of platforms) {
     try {
-      const body = await fetchText(`${origin}${dataPath}?platform=${platform}`, cfg.timeout);
-      const { cipher } = JSON.parse(body);
+      const data = await fetchText(`${origin}${dataPath}?platform=${platform}`, cfg.timeout);
+      if (!data.ok) continue;
+      const { cipher } = JSON.parse(data.text);
       const secret = cryptoJsDecrypt(cipher, pass);
       const text = cfg.scanHtml ? secret : visibleText(secret);
       for (const r of matchNumbers(text)) {
@@ -365,28 +391,324 @@ async function triggerReveal(page) {
 // Persistent store
 // --------------------------------------------------------------------------
 
-function loadStore(file) {
+function loadStore(file, keyFn) {
   try {
     const data = JSON.parse(fs.readFileSync(file, "utf8"));
     const map = new Map();
-    for (const rec of data.numbers || []) map.set(rec.canonical, rec);
+    for (const rec of data.numbers || []) map.set(keyFn ? keyFn(rec) : rec.canonical, rec);
     return map;
   } catch {
     return new Map();
   }
 }
 
-function saveStore(file, map) {
+// `header` describes whose numbers these are (id/label/url for a per-URL store),
+// so every record file says on its face which page it belongs to.
+function saveStore(file, map, header) {
   const numbers = [...map.values()].sort(
     (a, b) => (a.firstSeen || "").localeCompare(b.firstSeen || "")
   );
+  fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = file + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify({ numbers }, null, 2));
+  fs.writeFileSync(
+    tmp,
+    JSON.stringify({ ...(header || {}), updated: nowISO(), count: numbers.length, numbers }, null, 2)
+  );
   fs.renameSync(tmp, file);
 }
 
 function nowISO() {
   return new Date().toISOString();
+}
+
+// --------------------------------------------------------------------------
+// Targets (urls.json)
+// --------------------------------------------------------------------------
+//
+// urls.json holds the pages to monitor. Accepted shapes:
+//   { "targets": [ { "id": "x", "label": "X", "url": "https://…", "enabled": true } ] }
+//   { "targets": [ "https://a", "https://b" ] }      (or "urls" instead of "targets")
+//   [ "https://a", { "url": "https://b" } ]
+// A .txt file (one URL per line, # = comment) also works via --urls-file.
+
+function readJson(file) {
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function writeJson(file, data) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = file + ".tmp";
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2) + "\n");
+  fs.renameSync(tmp, file);
+}
+
+function slugify(s) {
+  return String(s)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+}
+
+// Folder name for a URL that doesn't name one itself. The short hash keeps two
+// different pages on the same host from landing in the same folder.
+function autoId(url) {
+  let host = String(url);
+  try {
+    host = new URL(url).hostname.replace(/^www\./, "");
+  } catch {}
+  const hash = crypto.createHash("sha1").update(String(url)).digest("hex").slice(0, 6);
+  return `${slugify(host) || "target"}-${hash}`;
+}
+
+function readTargetsFile(file) {
+  if (!fs.existsSync(file)) return null;
+  if (/\.json$/i.test(file)) {
+    const data = readJson(file);
+    if (data === null) throw new Error(`${file} is not valid JSON`);
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data.targets)) return data.targets;
+    if (Array.isArray(data.urls)) return data.urls;
+    throw new Error(`${file} needs a "targets" array`);
+  }
+  return fs
+    .readFileSync(file, "utf8")
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter((s) => s && !s.startsWith("#"));
+}
+
+// Turn raw entries into fully-formed targets with a unique id each. Bad entries
+// are reported and skipped rather than killing the run.
+function normalizeTargets(entries, source) {
+  const targets = [];
+  const usedIds = new Set();
+  const usedUrls = new Set();
+  entries.forEach((entry, i) => {
+    const raw = typeof entry === "string" ? { url: entry } : entry || {};
+    const url = String(raw.url || "").trim();
+    const where = `${source} entry #${i + 1}`;
+    if (!url) return console.error(`  ! ${where}: no "url" — skipped`);
+    if (!/^https?:\/\//i.test(url))
+      return console.error(`  ! ${where}: "${url}" is not an http(s) URL — skipped`);
+    if (usedUrls.has(url))
+      return console.error(`  ! ${where}: duplicate of an earlier url — skipped`);
+    usedUrls.add(url);
+
+    let id = slugify(raw.id || "") || autoId(url);
+    if (usedIds.has(id)) {
+      let n = 2;
+      while (usedIds.has(`${id}-${n}`)) n++;
+      id = `${id}-${n}`;
+    }
+    usedIds.add(id);
+
+    targets.push({
+      id,
+      label: String(raw.label || raw.name || id),
+      url,
+      enabled: raw.enabled !== false,
+      notes: raw.notes ? String(raw.notes) : "",
+    });
+  });
+  return targets;
+}
+
+function loadTargets(cfg) {
+  // URLs passed on the command line win, and are not written to urls.json.
+  if (cfg.urls.length) return normalizeTargets(cfg.urls, "command line");
+
+  let entries = readTargetsFile(cfg.urlsFile);
+  if (entries === null) {
+    writeJson(cfg.urlsFile, {
+      _readme: "Add one entry per URL to monitor: { id, label, url, enabled, notes }.",
+      targets: DEFAULT_URLS.map((url) => ({
+        id: autoId(url),
+        label: autoId(url),
+        url,
+        enabled: true,
+        notes: "",
+      })),
+    });
+    console.log(`  created ${cfg.urlsFile} — add more URLs there.`);
+    entries = readTargetsFile(cfg.urlsFile) || [];
+  }
+  return normalizeTargets(entries, path.basename(cfg.urlsFile));
+}
+
+// --------------------------------------------------------------------------
+// Per-URL records — records/<id>/{seen-tfns.json, tfns.log, target.json}
+// --------------------------------------------------------------------------
+//
+// Each URL gets its own folder and its own "seen" set. A number already known
+// for one URL still counts as NEW the first time it shows up on another, which
+// is the whole point: one URL's numbers never leak into another's record.
+
+function attachRecords(cfg, t) {
+  t.dir = path.join(cfg.records, t.id);
+  t.storeFile = path.join(t.dir, "seen-tfns.json");
+  t.logFile = path.join(t.dir, "tfns.log");
+  t.metaFile = path.join(t.dir, "target.json");
+  fs.mkdirSync(t.dir, { recursive: true });
+
+  t.seen = loadStore(t.storeFile);
+  const meta = readJson(t.metaFile) || {};
+  t.checks = Number(meta.checks) || 0;
+  t.hits = Number(meta.hits) || 0;
+  t.misses = Number(meta.misses) || 0;
+  t.firstChecked = meta.firstChecked || null;
+  t.lastChecked = meta.lastChecked || null;
+  t.lastNew = meta.lastNew || null;
+  t.errors = Number(meta.errors) || 0;
+  t.lastError = meta.lastError || null;
+  t.runChecks = 0; // checks so far this run (t.checks is the lifetime total)
+  t.current = []; // number(s) on the page as of the most recent check
+  t.newThisRun = [];
+  return t;
+}
+
+function saveTarget(t) {
+  saveStore(t.storeFile, t.seen, { id: t.id, label: t.label, url: t.url });
+  writeJson(t.metaFile, {
+    id: t.id,
+    label: t.label,
+    url: t.url,
+    enabled: t.enabled,
+    notes: t.notes,
+    uniqueNumbers: t.seen.size,
+    checks: t.checks,
+    hits: t.hits,
+    misses: t.misses,
+    firstChecked: t.firstChecked,
+    lastChecked: t.lastChecked,
+    lastNew: t.lastNew,
+    errors: t.errors,
+    lastError: t.lastError,
+    currentNumbers: t.current,
+  });
+}
+
+function shortPath(p) {
+  const r = path.relative(__dirname, p);
+  return !r || r.startsWith("..") ? p : r;
+}
+
+function logDiscovery(file, rec) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.appendFileSync(
+    file,
+    `${rec.firstSeen}\t${rec.pretty}\t${rec.canonical}\t${rec.foundVia}\t${rec.sourceUrl}\n`
+  );
+}
+
+// records/summary.json — the at-a-glance record of every URL and its numbers.
+function writeSummary(cfg, targets) {
+  writeJson(path.join(cfg.records, "summary.json"), {
+    updated: nowISO(),
+    urlsFile: cfg.urlsFile,
+    targets: targets.map((t) => ({
+      id: t.id,
+      label: t.label,
+      url: t.url,
+      enabled: t.enabled,
+      records: t.dir,
+      uniqueNumbers: t.seen.size,
+      newThisRun: t.newThisRun.length,
+      checks: t.checks,
+      hits: t.hits,
+      misses: t.misses,
+      firstChecked: t.firstChecked,
+      lastChecked: t.lastChecked,
+      lastNew: t.lastNew,
+      errors: t.errors,
+      lastError: t.lastError,
+      currentNumbers: t.current,
+      numbers: [...t.seen.values()].map((r) => r.pretty),
+    })),
+  });
+}
+
+// One-time import of the pre-urls.json files, which held every URL's numbers in
+// a single store. Records are routed by their own sourceUrl, so nothing is
+// attributed to the wrong page; anything that matches no configured URL is left
+// where it is. The old files are never modified.
+function migrateLegacy(cfg, targets) {
+  const marker = path.join(cfg.records, ".migrated");
+  if (fs.existsSync(marker)) return;
+  fs.mkdirSync(cfg.records, { recursive: true });
+
+  const byUrl = new Map(targets.map((t) => [t.url, t]));
+  let numbers = 0;
+  let unmatched = 0;
+  for (const rec of (readJson(cfg.store) || {}).numbers || []) {
+    const t = byUrl.get(rec.sourceUrl);
+    if (!t) {
+      unmatched++;
+      continue;
+    }
+    if (t.seen.has(rec.canonical)) continue;
+    t.seen.set(rec.canonical, rec);
+    numbers++;
+  }
+
+  // Log lines: tab-separated as firstSeen, pretty, canonical, foundVia, sourceUrl.
+  // A number that reached the log but never the old store (an interrupted save)
+  // is rebuilt from its own line, so the two old files are imported in full.
+  const buckets = new Map();
+  try {
+    for (const line of fs.readFileSync(cfg.log, "utf8").split(/\r?\n/)) {
+      const s = line.trim();
+      if (!s) continue;
+      const [firstSeen, pretty, canonical, foundVia, sourceUrl] = s
+        .split("\t")
+        .map((f) => f.trim());
+      const t = byUrl.get(sourceUrl);
+      if (!t) {
+        unmatched++;
+        continue;
+      }
+      if (!buckets.has(t.id)) buckets.set(t.id, []);
+      buckets.get(t.id).push(s);
+      if (canonical && !t.seen.has(canonical)) {
+        t.seen.set(canonical, {
+          canonical,
+          pretty,
+          tollFree: TOLL_FREE.has(canonical.slice(1, 4)),
+          firstSeen,
+          sourceUrl,
+          foundVia,
+          target: t.id,
+        });
+        numbers++;
+      }
+    }
+  } catch {}
+  let lines = 0;
+  for (const t of targets) {
+    const arr = buckets.get(t.id);
+    if (!arr || fs.existsSync(t.logFile)) continue; // never double-write a log
+    fs.writeFileSync(t.logFile, arr.join("\n") + "\n");
+    lines += arr.length;
+  }
+
+  for (const t of targets) if (t.seen.size) saveTarget(t);
+  fs.writeFileSync(
+    marker,
+    `${nowISO()}\timported ${numbers} number(s) and ${lines} log line(s) from ` +
+      `${cfg.store} / ${cfg.log}; ${unmatched} entr(ies) belonged to no configured url\n`
+  );
+  if (numbers || lines) {
+    console.log(
+      `  imported ${numbers} existing number(s) into per-URL records` +
+        (unmatched
+          ? ` (${unmatched} belonged to no url in urls.json — left in ${path.basename(cfg.store)})`
+          : "")
+    );
+  }
 }
 
 // Injected into every frame BEFORE the page's own scripts run. Neutralizes the
@@ -502,32 +824,76 @@ async function scanOnce(browser, url, cfg) {
 
 async function main() {
   const cfg = parseArgs(process.argv);
-  const seen = loadStore(cfg.store);
 
   console.log("TFN Checker");
-  console.log("  targets :", cfg.urls.join(", "));
+
+  const targets = loadTargets(cfg).map((t) => attachRecords(cfg, t));
+  if (targets.length === 0) {
+    console.error(`\nNo targets. Add at least one url to ${cfg.urlsFile}.`);
+    process.exit(1);
+  }
+  migrateLegacy(cfg, targets);
+
+  const active = targets.filter((t) => t.enabled);
+  if (active.length === 0) {
+    console.error(`\nEvery target in ${cfg.urlsFile} is disabled.`);
+    process.exit(1);
+  }
+
+  // The merged mirror of every URL's numbers. Keyed by number *and* url, so the
+  // same number found on two pages stays two distinct rows — nothing merges
+  // across URLs here either.
+  const combined = cfg.combined
+    ? loadStore(cfg.store, (r) => `${r.canonical}|${r.sourceUrl || ""}`)
+    : null;
+
+  const pad = Math.min(24, Math.max(...active.map((t) => t.label.length)));
+  console.log(
+    `  targets : ${active.length} from ${path.basename(cfg.urlsFile)}` +
+      (targets.length > active.length ? ` (${targets.length - active.length} disabled)` : "") +
+      ", checked in turn"
+  );
+  for (const t of active) {
+    console.log(
+      `            \x1b[36m${t.label.padEnd(pad)}\x1b[0m  ${t.url}` +
+        `\n            ${" ".repeat(pad)}  \x1b[2m${t.seen.size} known → ${shortPath(t.dir)}\x1b[0m`
+    );
+  }
   console.log(
     `  method  : ${cfg.method}` +
       (cfg.method !== "browser" ? ` (platform=${cfg.platform})` : "")
   );
   console.log(
     `  refresh : every ${cfg.interval}ms, ` +
-      `${cfg.count === Infinity ? "unlimited" : cfg.count} per cycle`
+      `${cfg.count === Infinity ? "unlimited" : cfg.count} check(s) per URL`
   );
-  console.log(`  store   : ${cfg.store} (${seen.size} known)`);
+  console.log(`  records : ${cfg.records}`);
+  if (combined) console.log(`  mirror  : ${cfg.store} (${combined.size} rows)`);
   console.log("  Press Ctrl+C to stop.\n");
 
-  const sessionNew = [];
   let stopping = false;
 
   function shutdown() {
     if (stopping) process.exit(0);
     stopping = true;
     console.log("\n\nStopping…");
-    saveStore(cfg.store, seen);
-    console.log(`Session discovered ${sessionNew.length} new number(s):`);
-    for (const r of sessionNew) console.log(`  ${r.pretty}${r.tollFree ? "  [toll-free]" : ""}`);
-    console.log(`Total unique numbers on record: ${seen.size}`);
+    for (const t of targets) saveTarget(t);
+    writeSummary(cfg, targets);
+    if (combined) saveStore(cfg.store, combined);
+
+    let totalNew = 0;
+    console.log("\nThis session, per URL:");
+    for (const t of active) {
+      totalNew += t.newThisRun.length;
+      console.log(
+        `  \x1b[36m${t.label.padEnd(pad)}\x1b[0m  ${t.newThisRun.length} new, ` +
+          `${t.seen.size} unique total  \x1b[2m${shortPath(t.dir)}\x1b[0m`
+      );
+      for (const r of t.newThisRun) {
+        console.log(`    + ${r.pretty}${r.tollFree ? "  [toll-free]" : ""}`);
+      }
+    }
+    console.log(`\n${totalNew} new number(s) across ${active.length} URL(s).`);
     process.exit(0);
   }
   process.on("SIGINT", shutdown);
@@ -560,6 +926,10 @@ async function main() {
   let browser = null;
   let browserRefreshes = 0; // scans since last (re)launch, for recycling
   let consecutiveCrashes = 0;
+  // Set when the browser method turns out to be unusable (Chromium missing, or
+  // it keeps crashing). The rotation then carries on decrypt-only rather than
+  // ending — a browser problem on one url must not stop the others.
+  let browserDown = "";
 
   async function closeBrowser() {
     if (browser) {
@@ -569,11 +939,18 @@ async function main() {
   }
 
   // One refresh via the headless browser, with crash recovery + periodic recycle.
-  // Throws only if the browser keeps crashing; otherwise returns records ([]).
+  // Never throws: an unusable browser disables the browser method for the rest
+  // of the run instead of ending the run.
   async function browserScan(url) {
     if (!browser || !browser.isConnected()) {
       await closeBrowser();
-      browser = await launchBrowser();
+      try {
+        browser = await launchBrowser();
+      } catch (e) {
+        browserDown = `can't launch Chromium: ${String((e && e.message) || e).split("\n")[0]}`;
+        process.stdout.write(`  \x1b[33m! ${browserDown} — carrying on without it.\x1b[0m\n`);
+        return [];
+      }
       browserRefreshes = 0;
     }
     try {
@@ -591,10 +968,9 @@ async function main() {
       if (isClosedErr(e)) {
         await closeBrowser();
         if (++consecutiveCrashes > 5) {
-          process.stdout.write(
-            "  ! browser keeps crashing — giving up on the browser method.\n"
-          );
-          throw e;
+          browserDown = "browser kept crashing";
+          process.stdout.write(`  \x1b[33m! ${browserDown} — carrying on without it.\x1b[0m\n`);
+          return [];
         }
         process.stdout.write(
           `\x1b[2m  · browser crashed — will relaunch (${consecutiveCrashes}/5)…\x1b[0m\n`
@@ -608,78 +984,131 @@ async function main() {
 
   const decryptKnown = new Set(); // URLs confirmed to be the decrypt kit
 
-  let refresh = 0;
+  // One check of one target. Everything here is scoped to that target's own
+  // record — its numbers, its counters, its log.
+  async function checkTarget(t) {
+    const url = t.url;
+    t.checks++;
+    t.runChecks++;
+    t.lastChecked = nowISO();
+    if (!t.firstChecked) t.firstChecked = t.lastChecked;
+    t.current = [];
+
+    // Prefer the memory-free decrypt method.
+    let recs = null;
+    let note = "no number found";
+    let problem = false;
+
+    if (cfg.method !== "browser") {
+      const out = await scanViaDecrypt(url, cfg);
+      if (Array.isArray(out)) {
+        recs = out;
+        decryptKnown.add(url);
+      } else if (out && out.unavailable) {
+        // The page is gone or unreachable. Record it against this url and move
+        // on — it may well be back next cycle, so it keeps its slot.
+        recs = [];
+        note = out.unavailable;
+        problem = true;
+        t.errors++;
+        t.lastError = { at: t.lastChecked, message: out.unavailable };
+      }
+    }
+    // Still null => decrypt disabled, or the page is up but isn't this kit.
+    if (recs === null) {
+      if (cfg.method === "decrypt" || decryptKnown.has(url)) {
+        // Never render a known-hostile kit in a browser (that's the memory bomb).
+        note = decryptKnown.has(url)
+          ? "decrypt: temporary miss — will retry"
+          : "decrypt: page not recognized (try --method browser)";
+        recs = [];
+      } else if (browserDown) {
+        note = `browser method unavailable (${browserDown})`;
+        problem = true;
+        recs = [];
+      } else {
+        recs = await browserScan(url);
+      }
+    }
+
+    t.current = recs.map((r) => r.pretty);
+    if (recs.length === 0) {
+      t.misses++;
+      const colour = problem ? "\x1b[33m" : "\x1b[2m";
+      process.stdout.write(`${colour}[${t.label} #${t.checks}] ${nowISO()}  ${note}\x1b[0m\n`);
+    } else {
+      t.hits++;
+    }
+
+    // Print the number(s) currently on the page every check, so they always show
+    // on the terminal. A number never seen *on this url* is highlighted in green
+    // as [NEW] and recorded against this url only — a number already known from
+    // a different url is still new here.
+    for (const r of recs) {
+      const tag = r.tollFree ? " [toll-free]" : "";
+      if (!t.seen.has(r.canonical)) {
+        const rec = {
+          canonical: r.canonical,
+          pretty: r.pretty,
+          tollFree: r.tollFree,
+          firstSeen: nowISO(),
+          sourceUrl: r.pageUrl || url,
+          foundVia: r.source,
+          target: t.id,
+        };
+        t.seen.set(r.canonical, rec);
+        t.newThisRun.push(rec);
+        t.lastNew = rec.firstSeen;
+        console.log(
+          `\x1b[1;32m[NEW]\x1b[0m \x1b[36m${t.label}\x1b[0m \x1b[1m${rec.pretty}\x1b[0m${tag}` +
+            `   \x1b[2m#${t.seen.size} for this url · via ${rec.foundVia}\x1b[0m`
+        );
+        logDiscovery(t.logFile, rec);
+        if (combined) {
+          combined.set(`${rec.canonical}|${rec.sourceUrl}`, rec);
+          saveStore(cfg.store, combined);
+          logDiscovery(cfg.log, rec);
+        }
+      } else {
+        process.stdout.write(
+          `\x1b[2m[${t.label} #${t.checks}] ${nowISO()}  ${r.pretty}${tag}  (already recorded for this url)\x1b[0m\n`
+        );
+      }
+    }
+  }
+
   try {
+    // Serial round-robin: one check of url 1, then url 2, … through the last,
+    // then back to url 1. A target that fails is logged against itself and the
+    // rotation moves straight on to the next one — the cycle never stops for a
+    // bad url, and every url keeps its place in the order.
     while (!stopping) {
-      for (const url of cfg.urls) {
+      for (const t of active) {
         if (stopping) break;
-        refresh++;
 
-        // Prefer the memory-free decrypt method.
-        let recs = null;
-        let emptyNote = "no number found";
-        if (cfg.method !== "browser") {
-          recs = await scanViaDecrypt(url, cfg);
-          if (recs !== null) decryptKnown.add(url);
-        }
-        // null => decrypt disabled, kit unrecognized, or a transient fetch miss.
-        if (recs === null) {
-          if (cfg.method === "decrypt" || decryptKnown.has(url)) {
-            // Never render a known-hostile kit in a browser (that's the memory bomb).
-            emptyNote = decryptKnown.has(url)
-              ? "decrypt: temporary miss — will retry"
-              : "decrypt: page not recognized (try --method browser)";
-            recs = [];
-          } else {
-            try {
-              recs = await browserScan(url);
-            } catch {
-              stopping = true;
-              break;
-            }
-          }
-        }
-
-        if (recs.length === 0) {
+        try {
+          await checkTarget(t);
+        } catch (e) {
+          t.errors++;
+          const msg = String((e && e.message) || e).split("\n")[0];
+          t.lastError = { at: nowISO(), message: msg };
           process.stdout.write(
-            `\x1b[2m[#${refresh}] ${nowISO()}  ${emptyNote}\x1b[0m\n`
+            `\x1b[33m[${t.label} #${t.checks}] ${nowISO()}  ! ${msg} — on to the next url\x1b[0m\n`
           );
         }
 
-        // Print the number(s) currently on the page every refresh, so they always
-        // show on the terminal. Numbers never seen before are highlighted in green
-        // as [NEW] and recorded; already-recorded ones print dimmed.
-        for (const r of recs) {
-          const tag = r.tollFree ? " [toll-free]" : "";
-          if (!seen.has(r.canonical)) {
-            const rec = {
-              canonical: r.canonical,
-              pretty: r.pretty,
-              tollFree: r.tollFree,
-              firstSeen: nowISO(),
-              sourceUrl: r.pageUrl || url,
-              foundVia: r.source,
-            };
-            seen.set(r.canonical, rec);
-            sessionNew.push(rec);
-            console.log(
-              `\x1b[1;32m[NEW #${sessionNew.length}]\x1b[0m \x1b[1m${rec.pretty}\x1b[0m${tag}` +
-                `   via ${rec.foundVia}   ${rec.sourceUrl}`
-            );
-            fs.appendFileSync(
-              cfg.log,
-              `${rec.firstSeen}\t${rec.pretty}\t${rec.canonical}\t${rec.foundVia}\t${rec.sourceUrl}\n`
-            );
-            saveStore(cfg.store, seen);
-          } else {
-            process.stdout.write(
-              `\x1b[2m[#${refresh}] ${nowISO()}  ${r.pretty}${tag}  (already recorded)\x1b[0m\n`
-            );
-          }
+        // Persisting is best-effort too: a locked or full disk shouldn't end the run.
+        try {
+          saveTarget(t);
+          writeSummary(cfg, targets);
+        } catch (e) {
+          process.stdout.write(
+            `  ! could not write ${t.id} records: ${String((e && e.message) || e).split("\n")[0]}\n`
+          );
         }
 
-        // stop after `count` refreshes per URL if a finite count was given
-        if (cfg.count !== Infinity && refresh >= cfg.count * cfg.urls.length) {
+        // stop once every URL has had `count` checks, if a finite count was given
+        if (cfg.count !== Infinity && active.every((x) => x.runChecks >= cfg.count)) {
           stopping = true;
           break;
         }
@@ -691,10 +1120,16 @@ async function main() {
     await closeBrowser();
   }
 
-  console.log(
-    `\nDone. ${sessionNew.length} new this run, ${seen.size} unique total.`
-  );
-  saveStore(cfg.store, seen);
+  console.log("\nDone.");
+  for (const t of active) {
+    console.log(
+      `  \x1b[36m${t.label.padEnd(pad)}\x1b[0m  ${t.newThisRun.length} new this run, ` +
+        `${t.seen.size} unique total  \x1b[2m${shortPath(t.dir)}\x1b[0m`
+    );
+  }
+  for (const t of targets) saveTarget(t);
+  writeSummary(cfg, targets);
+  if (combined) saveStore(cfg.store, combined);
 }
 
 function sleep(ms) {

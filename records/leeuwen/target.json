@@ -1,0 +1,20 @@
+{
+  "id": "leeuwen",
+  "label": "leeuwen",
+  "url": "https://leeuwen.lon1.cdn.digitaloceanspaces.com/index.html?gad_source=5&gad_campaignid=24155547745",
+  "enabled": true,
+  "notes": "seen in the pre-urls.json log; flip enabled to true to monitor again",
+  "uniqueNumbers": 1,
+  "checks": 1,
+  "hits": 0,
+  "misses": 1,
+  "firstChecked": "2026-08-21T18:15:50.599Z",
+  "lastChecked": "2026-08-21T18:15:50.599Z",
+  "lastNew": null,
+  "errors": 1,
+  "lastError": {
+    "at": "2026-08-21T18:15:50.599Z",
+    "message": "http 404"
+  },
+  "currentNumbers": []
+}

@@ -1,0 +1,45 @@
+{
+  "_readme": [
+    "Targets monitored by `node index.js`. Each entry is checked in turn (serial,",
+    "round-robin) and keeps its OWN record folder under records/<id>/, so numbers",
+    "found on one URL are never mixed with another's.",
+    "",
+    "Fields:  url      (required) the page to check",
+    "         id       (optional) folder name under records/ — defaults to host-hash",
+    "         label    (optional) name shown in the terminal — defaults to id",
+    "         enabled  (optional) set false to keep the entry but skip checking it",
+    "         notes    (optional) free-form, for your own reference",
+    "",
+    "A bare list of URL strings also works: { \"targets\": [\"https://a\", \"https://b\"] }"
+  ],
+  "targets": [
+    {
+      "id": "kkofuku",
+      "label": "kkofuku",
+      "url": "https://kkofuku.mkc1.cdn.digitaloceanspaces.com/index.html?gad_source=5&gad_campaignid=24140747718",
+      "enabled": true,
+      "notes": "original default target"
+    },
+    {
+      "id": "subroutine",
+      "label": "subroutine",
+      "url": "https://subroutine.lon1.cdn.digitaloceanspaces.com/index.html?gad_source=5&gad_campaignid=24151317280",
+      "enabled": true,
+      "notes": "seen in the pre-urls.json log; flip enabled to true to monitor again"
+    },
+    {
+      "id": "leeuwen",
+      "label": "leeuwen",
+      "url": "https://leeuwen.lon1.cdn.digitaloceanspaces.com/index.html?gad_source=5&gad_campaignid=24155547745",
+      "enabled": true,
+      "notes": "seen in the pre-urls.json log; flip enabled to true to monitor again"
+    },
+    {
+      "id": "pacific-depths",
+      "label": "pacific-depths",
+      "url": "https://pacific-depths-70202-1f9b16cc0560.herokuapp.com/?gad_source=5",
+      "enabled": true,
+      "notes": "seen in the pre-urls.json log; flip enabled to true to monitor again"
+    }
+  ]
+}

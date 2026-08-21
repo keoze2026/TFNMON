@@ -1,0 +1,17 @@
+{
+  "id": "subroutine",
+  "label": "subroutine",
+  "url": "https://subroutine.lon1.cdn.digitaloceanspaces.com/index.html?gad_source=5&gad_campaignid=24151317280",
+  "enabled": true,
+  "notes": "seen in the pre-urls.json log; flip enabled to true to monitor again",
+  "uniqueNumbers": 4,
+  "checks": 2,
+  "hits": 0,
+  "misses": 2,
+  "firstChecked": "2026-08-21T18:15:34.842Z",
+  "lastChecked": "2026-08-21T18:16:07.360Z",
+  "lastNew": null,
+  "errors": 0,
+  "lastError": null,
+  "currentNumbers": []
+}

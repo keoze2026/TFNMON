@@ -1,0 +1,42 @@
+{
+  "id": "subroutine",
+  "label": "subroutine",
+  "url": "https://subroutine.lon1.cdn.digitaloceanspaces.com/index.html?gad_source=5&gad_campaignid=24151317280",
+  "updated": "2026-08-21T18:16:24.082Z",
+  "count": 4,
+  "numbers": [
+    {
+      "canonical": "18772973964",
+      "pretty": "+1 (877) 297-3964",
+      "tollFree": true,
+      "firstSeen": "2026-08-21T15:57:12.359Z",
+      "sourceUrl": "https://subroutine.lon1.cdn.digitaloceanspaces.com/index.html",
+      "foundVia": "decrypt:mac"
+    },
+    {
+      "canonical": "18447853850",
+      "pretty": "+1 (844) 785-3850",
+      "tollFree": true,
+      "firstSeen": "2026-08-21T16:08:49.065Z",
+      "sourceUrl": "https://subroutine.lon1.cdn.digitaloceanspaces.com/index.html",
+      "foundVia": "decrypt:win"
+    },
+    {
+      "canonical": "18333718093",
+      "pretty": "+1 (833) 371-8093",
+      "tollFree": true,
+      "firstSeen": "2026-08-21T16:20:39.660Z",
+      "sourceUrl": "https://subroutine.lon1.cdn.digitaloceanspaces.com/index.html",
+      "foundVia": "decrypt:mac"
+    },
+    {
+      "canonical": "18778913360",
+      "pretty": "+1 (877) 891-3360",
+      "tollFree": true,
+      "firstSeen": "2026-08-21T16:38:39.224Z",
+      "sourceUrl": "https://subroutine.lon1.cdn.digitaloceanspaces.com/index.html",
+      "foundVia": "decrypt:mac",
+      "target": "subroutine"
+    }
+  ]
+}

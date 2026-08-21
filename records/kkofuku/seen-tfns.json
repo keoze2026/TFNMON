@@ -1,6 +1,9 @@
 {
-  "updated": "2026-08-21T18:16:24.214Z",
-  "count": 12,
+  "id": "kkofuku",
+  "label": "kkofuku",
+  "url": "https://kkofuku.mkc1.cdn.digitaloceanspaces.com/index.html?gad_source=5&gad_campaignid=24140747718",
+  "updated": "2026-08-21T18:16:24.069Z",
+  "count": 7,
   "numbers": [
     {
       "canonical": "18883031261",
@@ -57,46 +60,6 @@
       "firstSeen": "2026-08-18T18:07:44.633Z",
       "sourceUrl": "https://kkofuku.mkc1.cdn.digitaloceanspaces.com/index.html",
       "foundVia": "decrypt:mac"
-    },
-    {
-      "canonical": "18333718740",
-      "pretty": "+1 (833) 371-8740",
-      "tollFree": true,
-      "firstSeen": "2026-08-20T16:06:36.020Z",
-      "sourceUrl": "https://leeuwen.lon1.cdn.digitaloceanspaces.com/index.html",
-      "foundVia": "decrypt:win"
-    },
-    {
-      "canonical": "18772973964",
-      "pretty": "+1 (877) 297-3964",
-      "tollFree": true,
-      "firstSeen": "2026-08-21T15:57:12.359Z",
-      "sourceUrl": "https://subroutine.lon1.cdn.digitaloceanspaces.com/index.html",
-      "foundVia": "decrypt:mac"
-    },
-    {
-      "canonical": "18447853850",
-      "pretty": "+1 (844) 785-3850",
-      "tollFree": true,
-      "firstSeen": "2026-08-21T16:08:49.065Z",
-      "sourceUrl": "https://subroutine.lon1.cdn.digitaloceanspaces.com/index.html",
-      "foundVia": "decrypt:win"
-    },
-    {
-      "canonical": "18333718093",
-      "pretty": "+1 (833) 371-8093",
-      "tollFree": true,
-      "firstSeen": "2026-08-21T16:20:39.660Z",
-      "sourceUrl": "https://subroutine.lon1.cdn.digitaloceanspaces.com/index.html",
-      "foundVia": "decrypt:mac"
-    },
-    {
-      "canonical": "18045550115",
-      "pretty": "+1 (804) 555-0115",
-      "tollFree": false,
-      "firstSeen": "2026-08-21T16:28:49.209Z",
-      "sourceUrl": "https://pacific-depths-70202-1f9b16cc0560.herokuapp.com/?gad_source=5",
-      "foundVia": "tel-link"
     }
   ]
 }
